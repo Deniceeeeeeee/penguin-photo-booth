@@ -19,7 +19,7 @@ export const POSE_CAPTIONS: Record<Pose, string> = {
   base: "Make a gesture",
   wave: "GM mate",
   peace: "Certified Waddler",
-  boss: "Grumpy Penguin Mode",
+  boss: "Grumpy Penguin",
   love: "Penguin loves you",
 };
 

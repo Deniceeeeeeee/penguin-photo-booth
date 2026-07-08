@@ -16,6 +16,18 @@ type DrawSceneOptions = {
   time: number;
 };
 
+type DrawStickerSceneOptions = {
+  canvas: HTMLCanvasElement;
+  video: HTMLVideoElement;
+  personMask: ImageData;
+  assets: BoothAssets;
+  pose: Pose;
+  effect: Effect;
+  gesture: GestureResult | null;
+  poseChangedAt: number;
+  time: number;
+};
+
 const sparkleSeeds = [
   { x: 0.16, y: 0.18, size: 0.07, delay: 0 },
   { x: 0.82, y: 0.14, size: 0.06, delay: 0.8 },
@@ -141,6 +153,81 @@ function coverVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoElement) {
     CANVAS_SIZE,
     CANVAS_SIZE,
   );
+  ctx.restore();
+}
+
+function createInternalCanvas(width = CANVAS_SIZE, height = CANVAS_SIZE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function drawSegmentedVideo(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  personMask: ImageData,
+  gesture: GestureResult | null,
+) {
+  const videoCanvas = createInternalCanvas();
+  const videoCtx = videoCanvas.getContext("2d");
+  const maskSourceCanvas = createInternalCanvas(personMask.width, personMask.height);
+  const maskSourceCtx = maskSourceCanvas.getContext("2d");
+  const maskCanvas = createInternalCanvas();
+  const maskCtx = maskCanvas.getContext("2d");
+
+  if (!videoCtx || !maskSourceCtx || !maskCtx) {
+    return;
+  }
+
+  coverVideo(videoCtx, video);
+  maskSourceCtx.putImageData(personMask, 0, 0);
+  maskCtx.drawImage(maskSourceCanvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  drawLandmarkMaskBoost(maskCtx, video, gesture);
+
+  videoCtx.globalCompositeOperation = "destination-in";
+  videoCtx.drawImage(maskCanvas, 0, 0);
+  videoCtx.globalCompositeOperation = "source-over";
+  ctx.drawImage(videoCanvas, 0, 0);
+}
+
+function drawLandmarkMaskBoost(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  gesture: GestureResult | null,
+) {
+  const landmarks = gesture?.landmarks;
+  if (!landmarks?.length || video.videoWidth <= 0 || video.videoHeight <= 0) {
+    return;
+  }
+
+  const transform = getVideoCoverTransform(video);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle = "#ffffff";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = CANVAS_SIZE * 0.068;
+
+  handConnections.forEach(([start, end]) => {
+    const a = mirroredLandmarkPoint(landmarks[start], transform);
+    const b = mirroredLandmarkPoint(landmarks[end], transform);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  });
+
+  landmarks.forEach((landmark, index) => {
+    const point = mirroredLandmarkPoint(landmark, transform);
+    const isTip = fingertipIndexes.includes(index as (typeof fingertipIndexes)[number]);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, isTip ? CANVAS_SIZE * 0.055 : CANVAS_SIZE * 0.044, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
   ctx.restore();
 }
 
@@ -325,11 +412,11 @@ function drawPenguin(
   const elapsed = Math.max(0, time - poseChangedAt);
   const pop = elapsed < 420 ? 1 + Math.sin((elapsed / 420) * Math.PI) * 0.13 : 1;
   const size = CANVAS_SIZE * 0.36 * poseScale[pose] * pop;
-  const margin = CANVAS_SIZE * 0.055;
+  const margin = CANVAS_SIZE * 0.005;
   const bounce = Math.sin(time * 0.004) * CANVAS_SIZE * 0.014;
   const wiggle = effect === "heart" ? Math.sin(time * 0.011) * 0.06 : 0;
   const x = CANVAS_SIZE - size - margin;
-  const y = CANVAS_SIZE - size - CANVAS_SIZE * 0.16 + bounce;
+  const y = CANVAS_SIZE - size - CANVAS_SIZE * 0.055 + bounce;
 
   ctx.save();
   ctx.globalAlpha = 0.28;
@@ -341,9 +428,9 @@ function drawPenguin(
   ctx.restore();
 
   ctx.save();
-  ctx.shadowColor = "rgba(45, 25, 40, 0.25)";
-  ctx.shadowBlur = 34;
-  ctx.shadowOffsetY = 16;
+  ctx.shadowColor = "rgba(45, 25, 40, 0.2)";
+  ctx.shadowBlur = 38;
+  ctx.shadowOffsetY = 18;
   ctx.translate(x + size / 2, y + size / 2);
   ctx.rotate(wiggle);
   ctx.drawImage(image, -size / 2, -size / 2, size, size);
@@ -496,4 +583,29 @@ export function drawScene({
   drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt);
   drawWatermark(ctx);
   drawSnapFlash(ctx, time, snapStartedAt);
+}
+
+export function drawStickerScene({
+  canvas,
+  video,
+  personMask,
+  assets,
+  pose,
+  effect,
+  gesture,
+  poseChangedAt,
+  time,
+}: DrawStickerSceneOptions) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || video.videoWidth <= 0 || video.videoHeight <= 0) {
+    return;
+  }
+
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  drawSegmentedVideo(ctx, video, personMask, gesture);
+  drawHandOverlay(ctx, assets, gesture, video, effect, time);
+  drawEffects(ctx, assets, effect, time);
+  drawCaption(ctx, pose, effect);
+  const penguin = drawPenguin(ctx, assets, pose, effect, time, poseChangedAt);
+  drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt);
 }
