@@ -309,6 +309,153 @@ h1 {
   color: #ffffff;
 }
 
+.penguin-picker {
+  width: min(100%, 640px);
+  margin: 18px auto 0;
+  padding: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 238, 247, 0.72)),
+    rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 16px 34px rgba(173, 72, 118, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.picker-heading h2 {
+  margin-bottom: 4px;
+  color: #3d2434;
+  font-family: "Bobby Jones", "Londrina Solid", system-ui, sans-serif;
+  font-size: 1.25rem;
+}
+
+.picker-heading p {
+  margin-bottom: 12px;
+  color: #6a475c;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.penguin-mode-toggle,
+.collection-options,
+.token-loader {
+  display: grid;
+  gap: 10px;
+}
+
+.penguin-mode-toggle,
+.collection-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.penguin-mode-toggle button,
+.collection-options button,
+.token-loader button {
+  min-height: 48px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fff9bc, #ffffff);
+  color: #5a394d;
+  cursor: pointer;
+  font-family: "Londrina Solid", system-ui, sans-serif;
+  font-size: 1.02rem;
+  font-weight: 900;
+  box-shadow: 0 10px 20px rgba(173, 72, 118, 0.12);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.penguin-mode-toggle button:hover:not(:disabled),
+.collection-options button:hover:not(:disabled),
+.token-loader button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 24px rgba(173, 72, 118, 0.16);
+}
+
+.penguin-mode-toggle button.is-selected,
+.collection-options button.is-selected {
+  background: linear-gradient(135deg, #ff5e9f, #ff8a76);
+  color: #ffffff;
+}
+
+.custom-penguin-panel {
+  margin-top: 12px;
+}
+
+.collection-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.collection-options img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  object-fit: cover;
+  background: #ffffff;
+}
+
+.token-loader {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 10px;
+}
+
+.token-loader input {
+  min-height: 48px;
+  min-width: 0;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #3d2434;
+  font: 800 1rem "Londrina Solid", system-ui, sans-serif;
+  outline: none;
+  padding: 0 16px;
+  box-shadow: inset 0 2px 8px rgba(61, 36, 52, 0.08);
+}
+
+.token-loader input:focus {
+  border-color: rgba(255, 94, 159, 0.62);
+  box-shadow:
+    0 0 0 4px rgba(255, 94, 159, 0.14),
+    inset 0 2px 8px rgba(61, 36, 52, 0.08);
+}
+
+.token-loader button {
+  padding: 0 18px;
+  background: linear-gradient(135deg, #0b776c, #18a194);
+  color: #ffffff;
+}
+
+.token-loader button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.penguin-load-status {
+  margin: 10px 0 0;
+  font-weight: 900;
+  text-align: center;
+}
+
+.penguin-load-status.loading {
+  color: #6a475c;
+}
+
+.penguin-load-status.success {
+  color: #0b776c;
+}
+
+.penguin-load-status.error {
+  color: #a7245a;
+}
+
 .status-message {
   margin: 14px 4px 0;
   color: #6a475c;

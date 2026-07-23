@@ -18,6 +18,11 @@ import {
   type ComposedPosterResult,
 } from "./lib/poster/composePoster";
 import { createStickerCutout } from "./lib/poster/createStickerCutout";
+import {
+  loadNftPenguin,
+  PENGUIN_COLLECTIONS,
+  type PenguinCollectionId,
+} from "./lib/nftPenguin";
 
 type StableCandidate = {
   name: string;
@@ -25,6 +30,9 @@ type StableCandidate = {
   landmarks: GestureResult["landmarks"];
   count: number;
 };
+
+type PenguinMode = "default" | "custom";
+type LoadStatus = "idle" | "loading" | "success" | "error";
 
 const INITIAL_POSE: Pose = "base";
 const INITIAL_EFFECT: Effect = "none";
@@ -42,6 +50,9 @@ export default function App() {
   const poseChangedAtRef = useRef(0);
   const snapStartedAtRef = useRef<number | null>(null);
   const stickerCutoutRef = useRef<HTMLCanvasElement | null>(null);
+  const penguinModeRef = useRef<PenguinMode>("default");
+  const customPenguinImageRef = useRef<HTMLImageElement | null>(null);
+  const customPenguinCollectionRef = useRef<PenguinCollectionId | null>(null);
 
   const [assetsReady, setAssetsReady] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
@@ -53,13 +64,21 @@ export default function App() {
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus>("idle");
   const [printProgress, setPrintProgress] = useState(0);
   const [composedPoster, setComposedPoster] = useState<ComposedPosterResult | null>(null);
+  const [penguinMode, setPenguinMode] = useState<PenguinMode>("default");
+  const [selectedCollectionId, setSelectedCollectionId] =
+    useState<PenguinCollectionId>("lil-pudgy");
+  const [tokenId, setTokenId] = useState("");
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
+  const [customPenguinImage, setCustomPenguinImage] = useState<HTMLImageElement | null>(null);
+  const [customPenguinCollectionId, setCustomPenguinCollectionId] =
+    useState<PenguinCollectionId | null>(null);
 
   const camera = useCamera();
   const {
     recognize,
     isLoading: isRecognizerLoading,
     error: recognizerError,
-  } = useGestureRecognizer();
+  } = useGestureRecognizer(camera.isReady);
   const {
     createPersonMask,
     isLoading: isSegmenterLoading,
@@ -95,6 +114,18 @@ export default function App() {
   useEffect(() => {
     effectRef.current = effect;
   }, [effect]);
+
+  useEffect(() => {
+    penguinModeRef.current = penguinMode;
+  }, [penguinMode]);
+
+  useEffect(() => {
+    customPenguinImageRef.current = customPenguinImage;
+  }, [customPenguinImage]);
+
+  useEffect(() => {
+    customPenguinCollectionRef.current = customPenguinCollectionId;
+  }, [customPenguinCollectionId]);
 
   useEffect(() => {
     let frameId = 0;
@@ -184,9 +215,16 @@ export default function App() {
     }
 
     function render(time: number) {
+      if (document.hidden) {
+        frameId = requestAnimationFrame(render);
+        return;
+      }
+
       const assets = assetsRef.current;
       const canvas = canvasRef.current;
       const video = camera.videoRef.current;
+      const activeCustomPenguin =
+        penguinModeRef.current === "custom" ? customPenguinImageRef.current : null;
 
       if (assets && canvas) {
         if (camera.isReady && video) {
@@ -202,6 +240,8 @@ export default function App() {
           gesture: drawGestureRef.current,
           poseChangedAt: poseChangedAtRef.current,
           snapStartedAt: snapStartedAtRef.current,
+          customPenguinImage: activeCustomPenguin,
+          customPenguinCollectionId: activeCustomPenguin ? customPenguinCollectionRef.current : null,
           time,
         });
       }
@@ -214,10 +254,48 @@ export default function App() {
     return () => cancelAnimationFrame(frameId);
   }, [camera.isReady, camera.videoRef, recognize]);
 
-  const handleSnap = useCallback(() => {
+  const handlePenguinModeChange = useCallback((nextMode: PenguinMode) => {
+    setPenguinMode(nextMode);
+    setDownloadMessage(null);
+  }, []);
+
+  const handleCollectionChange = useCallback((collectionId: PenguinCollectionId) => {
+    setSelectedCollectionId(collectionId);
+    setLoadStatus("idle");
+  }, []);
+
+  const handleTokenChange = useCallback((value: string) => {
+    setTokenId(value);
+    setLoadStatus("idle");
+  }, []);
+
+  const handleLoadPenguin = useCallback(async () => {
+    const collection =
+      PENGUIN_COLLECTIONS.find((item) => item.id === selectedCollectionId) ??
+      PENGUIN_COLLECTIONS[0];
+
+    try {
+      setLoadStatus("loading");
+      const loadedPenguin = await loadNftPenguin(collection, tokenId);
+      setCustomPenguinImage(loadedPenguin.image);
+      setCustomPenguinCollectionId(collection.id);
+      setLoadStatus("success");
+    } catch {
+      setCustomPenguinImage(null);
+      setCustomPenguinCollectionId(null);
+      setLoadStatus("error");
+    }
+  }, [selectedCollectionId, tokenId]);
+
+  const handleSnap = useCallback(async () => {
     const canvas = canvasRef.current;
     const assets = assetsRef.current;
     const video = camera.videoRef.current;
+    const activeCustomPenguin =
+      penguinModeRef.current === "custom" ? customPenguinImageRef.current : null;
+    const activeCustomPenguinCollectionId = activeCustomPenguin
+      ? customPenguinCollectionRef.current
+      : null;
     if (!canvas) {
       return;
     }
@@ -235,7 +313,7 @@ export default function App() {
     capturedCtx.drawImage(canvas, 0, 0);
 
     const dataUrl = capturedCanvas.toDataURL("image/png");
-    const personMask = createPersonMask(capturedCanvas);
+    const personMask = await createPersonMask(capturedCanvas);
 
     if (assets && video && video.videoWidth > 0 && video.videoHeight > 0 && personMask) {
       const stickerScene = document.createElement("canvas");
@@ -251,6 +329,8 @@ export default function App() {
         effect: effectRef.current,
         gesture: drawGestureRef.current,
         poseChangedAt: poseChangedAtRef.current,
+        customPenguinImage: activeCustomPenguin,
+        customPenguinCollectionId: activeCustomPenguinCollectionId,
         time: performance.now(),
       });
 
@@ -382,8 +462,8 @@ export default function App() {
         <div className="gesture-guide" aria-label="Gesture guide">
           <span>✋ Wave</span>
           <span>✌️ Peace</span>
-          <span>✊ Grumpy</span>
-          <span>👍 Sparkle</span>
+          <span>✊ Not Today</span>
+          <span>👍 Shine</span>
           <span>🤟 Love</span>
         </div>
 
@@ -395,6 +475,76 @@ export default function App() {
             Take Cute Shot
           </button>
         </div>
+
+        {camera.isReady && !snapshot ? (
+          <section className="penguin-picker" aria-label="Choose your penguin">
+            <div className="picker-heading">
+              <h2>Choose your penguin</h2>
+              <p>Default Penguin is selected automatically.</p>
+            </div>
+
+            <div className="penguin-mode-toggle">
+              <button
+                type="button"
+                className={penguinMode === "default" ? "is-selected" : ""}
+                onClick={() => handlePenguinModeChange("default")}
+              >
+                Default Penguin
+              </button>
+              <button
+                type="button"
+                className={penguinMode === "custom" ? "is-selected" : ""}
+                onClick={() => handlePenguinModeChange("custom")}
+              >
+                Custom NFT Penguin
+              </button>
+            </div>
+
+            {penguinMode === "custom" ? (
+              <div className="custom-penguin-panel">
+                <div className="collection-options" aria-label="NFT collection selector">
+                  {PENGUIN_COLLECTIONS.map((collection) => (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      className={selectedCollectionId === collection.id ? "is-selected" : ""}
+                      onClick={() => handleCollectionChange(collection.id)}
+                    >
+                      <img src={collection.icon} alt="" />
+                      <span>{collection.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="token-loader">
+                  <input
+                    value={tokenId}
+                    onChange={(event) => handleTokenChange(event.target.value)}
+                    placeholder="Enter token ID, e.g. 11094"
+                    aria-label="NFT token ID"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleLoadPenguin}
+                    disabled={loadStatus === "loading" || tokenId.trim().length === 0}
+                  >
+                    Load Penguin
+                  </button>
+                </div>
+
+                {loadStatus !== "idle" ? (
+                  <p className={`penguin-load-status ${loadStatus}`}>
+                    {loadStatus === "loading" ? "Loading penguin..." : null}
+                    {loadStatus === "success" ? "Penguin loaded!" : null}
+                    {loadStatus === "error"
+                      ? "Could not load this penguin. Please check the collection and token ID."
+                      : null}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {snapshot ? (
           <section className="preview-panel" aria-label="Snapped penguin photo preview">

@@ -1,6 +1,7 @@
 import type { BoothAssets } from "./assets";
 import type { Effect, GestureResult, Pose } from "./gestures";
 import { getCaption, getReactionBubble } from "./gestures";
+import type { PenguinCollectionId } from "./nftPenguin";
 
 export const CANVAS_SIZE = 1080;
 
@@ -13,6 +14,8 @@ type DrawSceneOptions = {
   gesture: GestureResult | null;
   poseChangedAt: number;
   snapStartedAt: number | null;
+  customPenguinImage?: HTMLImageElement | null;
+  customPenguinCollectionId?: PenguinCollectionId | null;
   time: number;
 };
 
@@ -25,6 +28,8 @@ type DrawStickerSceneOptions = {
   effect: Effect;
   gesture: GestureResult | null;
   poseChangedAt: number;
+  customPenguinImage?: HTMLImageElement | null;
+  customPenguinCollectionId?: PenguinCollectionId | null;
   time: number;
 };
 
@@ -84,6 +89,16 @@ const fingertipSeeds = [
   { dx: 18, dy: -22, delay: 0.4 },
   { dx: 3, dy: -34, delay: 0.7 },
 ] as const;
+
+type CustomGestureKind = "base" | "wave" | "peace" | "not-today" | "shine" | "love";
+
+type PenguinDrawPlacement = {
+  x: number;
+  y: number;
+  size: number;
+  centerX: number;
+  centerY: number;
+};
 
 type VideoCoverTransform = {
   videoWidth: number;
@@ -161,6 +176,10 @@ function createInternalCanvas(width = CANVAS_SIZE, height = CANVAS_SIZE) {
   canvas.width = width;
   canvas.height = height;
   return canvas;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function drawSegmentedVideo(
@@ -400,6 +419,239 @@ function drawTwinkle(ctx: CanvasRenderingContext2D, x: number, y: number, size: 
   ctx.restore();
 }
 
+function getCustomGestureKind(pose: Pose, effect: Effect): CustomGestureKind {
+  if (effect === "heart" || pose === "love") {
+    return "love";
+  }
+
+  if (effect === "sparkle") {
+    return "shine";
+  }
+
+  if (pose === "wave") {
+    return "wave";
+  }
+
+  if (pose === "peace") {
+    return "peace";
+  }
+
+  if (pose === "boss") {
+    return "not-today";
+  }
+
+  return "base";
+}
+
+function getCustomGestureCopy(collectionId: PenguinCollectionId | null | undefined, kind: CustomGestureKind) {
+  void collectionId;
+
+  const customCopy: Record<CustomGestureKind, { bubble: string; caption: string }> = {
+    base: { bubble: "Cute!", caption: "Make a gesture" },
+    wave: { bubble: "Hello fam!", caption: "GM Mate" },
+    peace: { bubble: "Yay!", caption: "Say Cheese" },
+    "not-today": { bubble: "Not today!", caption: "Angry mode" },
+    shine: { bubble: "All good!", caption: "Approveddd" },
+    love: { bubble: "Love u!", caption: "Lovesss" },
+  };
+
+  return customCopy[kind];
+}
+
+function getCustomPenguinMotion(
+  collectionId: PenguinCollectionId | null | undefined,
+  kind: CustomGestureKind,
+  time: number,
+) {
+  void collectionId;
+  const base = { rotation: 0, scale: 1, offsetY: 0, offsetX: 0 };
+
+  switch (kind) {
+    case "wave":
+      return { ...base, rotation: Math.sin(time * 0.01) * 0.055 };
+    case "peace":
+      return { ...base, offsetY: -Math.abs(Math.sin(time * 0.009)) * 14 };
+    case "not-today":
+      return {
+        ...base,
+        rotation: Math.sin(time * 0.018) * 0.025,
+        offsetY: 8 + Math.sin(time * 0.004) * 8,
+      };
+    default:
+      return base;
+  }
+}
+
+function drawMotionLines(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color = "#ffffff") {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(7, size * 0.06);
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(255, 106, 145, 0.42)";
+  ctx.shadowBlur = 14;
+  for (let index = 0; index < 3; index += 1) {
+    const offset = index * size * 0.14;
+    ctx.beginPath();
+    ctx.arc(x + offset, y + offset * 0.12, size * (0.28 + index * 0.07), -0.9, 0.75);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAnnoyedMarks(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  ctx.save();
+  ctx.strokeStyle = "#ff6f85";
+  ctx.lineWidth = Math.max(8, size * 0.06);
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(255, 111, 133, 0.45)";
+  ctx.shadowBlur = 12;
+  [
+    [0, -1],
+    [0.88, -0.48],
+    [0.88, 0.48],
+    [0, 1],
+  ].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size * 0.4, y + dy * size * 0.4);
+    ctx.lineTo(x + dx * size * 0.78, y + dy * size * 0.78);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawSoftCloud(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.82;
+  ctx.fillStyle = "#4d4050";
+  ctx.shadowColor = "rgba(61, 36, 52, 0.3)";
+  ctx.shadowBlur = 18;
+  [
+    { dx: -0.24, dy: 0.04, r: 0.22 },
+    { dx: -0.04, dy: -0.08, r: 0.27 },
+    { dx: 0.2, dy: 0.02, r: 0.22 },
+    { dx: 0.03, dy: 0.12, r: 0.28 },
+  ].forEach((part) => {
+    ctx.beginPath();
+    ctx.arc(x + size * part.dx, y + size * part.dy, size * part.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawCustomGestureOverlays(
+  ctx: CanvasRenderingContext2D,
+  assets: BoothAssets,
+  collectionId: PenguinCollectionId | null | undefined,
+  kind: CustomGestureKind,
+  penguin: PenguinDrawPlacement,
+  time: number,
+) {
+  if (kind === "base") {
+    return;
+  }
+
+  void collectionId;
+  const { x, y, size, centerX, centerY } = penguin;
+  const bubbleLeft = clamp(x + size * 0.42, 28, CANVAS_SIZE - 245 - 28);
+  const bubbleTop = clamp(y - 86 - 18 + Math.sin(time * 0.006) * 5, 28, CANVAS_SIZE - 86 - 76);
+  const spots = [
+    { x: clamp(bubbleLeft + 250, 720, CANVAS_SIZE - 70), y: clamp(bubbleTop + 118, 120, CANVAS_SIZE - 170) },
+    { x: clamp(bubbleLeft + 210, 690, CANVAS_SIZE - 86), y: clamp(bubbleTop + 198, 170, CANVAS_SIZE - 145) },
+    { x: clamp(centerX + size * 0.55, 720, CANVAS_SIZE - 72), y: clamp(y + size * 0.7, 360, CANVAS_SIZE - 145) },
+    { x: clamp(x + size * 0.18, 610, CANVAS_SIZE - 255), y: clamp(y + size * 0.9, 510, CANVAS_SIZE - 132) },
+  ];
+
+  const drawEmoji = (emoji: string, xPos: number, yPos: number, scale = 0.13) => {
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.font = `${Math.round(size * scale)}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(61, 36, 52, 0.18)";
+    ctx.shadowBlur = 10;
+    ctx.fillText(emoji, xPos, yPos);
+    ctx.restore();
+  };
+
+  if (kind === "wave") {
+    drawMotionLines(ctx, spots[0].x, spots[0].y, size * 0.16, "#ffffff");
+    drawMotionLines(ctx, spots[1].x, spots[1].y, size * 0.12, "#ffc6dd");
+  }
+
+  if (kind === "peace") {
+    drawTwinkle(ctx, spots[0].x, spots[0].y, size * 0.04, "#fff38e");
+    drawTwinkle(ctx, spots[1].x, spots[1].y, size * 0.035, "#bff7ff");
+    drawTwinkle(ctx, spots[2].x, spots[2].y, size * 0.035, "#ffc6dd");
+    drawEmoji("✌️", spots[0].x - size * 0.15, spots[0].y + size * 0.08);
+    drawEmoji("✌️", spots[1].x - size * 0.12, spots[1].y + size * 0.08, 0.12);
+  }
+
+  if (kind === "not-today") {
+    drawSoftCloud(ctx, spots[0].x, spots[0].y, size * 0.11);
+    drawSoftCloud(ctx, spots[1].x, spots[1].y, size * 0.09);
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.font = `${Math.round(size * 0.12)}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("💤", spots[2].x, spots[2].y);
+    ctx.fillText("💫", spots[3].x, spots[3].y);
+    ctx.restore();
+  }
+
+  if (kind === "shine") {
+    ctx.save();
+    ctx.globalAlpha = 0.08 + Math.abs(Math.sin(time * 0.01)) * 0.08;
+    const glow = ctx.createRadialGradient(centerX, centerY, size * 0.35, centerX, centerY, size * 0.86);
+    glow.addColorStop(0, "#fff6a5");
+    glow.addColorStop(1, "rgba(255, 246, 165, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, size * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    for (let index = 0; index < 16; index += 1) {
+      const spot = spots[index % spots.length];
+      const blink = 0.35 + Math.abs(Math.sin(time * 0.012 + index * 0.9)) * 0.65;
+      const offsetRadius = size * (0.04 + (index % 3) * 0.025);
+      drawTwinkle(
+        ctx,
+        spot.x + Math.sin(time * 0.004 + index) * offsetRadius,
+        spot.y + Math.cos(time * 0.004 + index) * offsetRadius,
+        size * (0.032 + (index % 3) * 0.012) * blink,
+        index % 2 ? "#fff38e" : "#ffc6dd",
+      );
+    }
+  }
+
+  if (kind === "love") {
+    ctx.save();
+    ctx.globalAlpha = 0.2 + Math.sin(time * 0.005) * 0.04;
+    const glow = ctx.createRadialGradient(centerX, centerY, size * 0.08, centerX, centerY, size * 0.7);
+    glow.addColorStop(0, "#ffc6dd");
+    glow.addColorStop(1, "rgba(255, 198, 221, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, size * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    [...heartSeeds, ...heartSeeds.slice(0, 3)].forEach((seed, index) => {
+      const phase = ((time * 0.00045 + seed.delay) % 1 + 1) % 1;
+      const alpha = Math.sin(phase * Math.PI);
+      const spot = spots[index % spots.length];
+      const hx = spot.x + Math.sin(phase * Math.PI * 2 + index) * size * (0.025 + (index % 3) * 0.012);
+      const hy = spot.y - phase * size * (0.13 + (index % 2) * 0.06);
+      const heartSize = size * (0.065 + (index % 3) * 0.018);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.drawImage(assets.effects.heart, hx, hy, heartSize, heartSize);
+      ctx.restore();
+    });
+  }
+}
+
 function drawPenguin(
   ctx: CanvasRenderingContext2D,
   assets: BoothAssets,
@@ -407,16 +659,26 @@ function drawPenguin(
   effect: Effect,
   time: number,
   poseChangedAt: number,
-) {
-  const image = assets.penguins[pose];
+  customPenguinImage?: HTMLImageElement | null,
+  customPenguinCollectionId?: PenguinCollectionId | null,
+): PenguinDrawPlacement {
+  const image = customPenguinImage ?? assets.penguins[pose];
   const elapsed = Math.max(0, time - poseChangedAt);
-  const pop = elapsed < 420 ? 1 + Math.sin((elapsed / 420) * Math.PI) * 0.13 : 1;
-  const size = CANVAS_SIZE * 0.36 * poseScale[pose] * pop;
+  const pop = !customPenguinImage && elapsed < 420 ? 1 + Math.sin((elapsed / 420) * Math.PI) * 0.13 : 1;
+  const customKind = getCustomGestureKind(pose, effect);
+  const customMotion = customPenguinImage
+    ? getCustomPenguinMotion(customPenguinCollectionId, customKind, time)
+    : { rotation: 0, scale: 1, offsetY: 0, offsetX: 0 };
+  const size =
+    CANVAS_SIZE *
+    0.36 *
+    (customPenguinImage ? customMotion.scale : poseScale[pose]) *
+    pop;
   const margin = CANVAS_SIZE * 0.005;
   const bounce = Math.sin(time * 0.004) * CANVAS_SIZE * 0.014;
   const wiggle = effect === "heart" ? Math.sin(time * 0.011) * 0.06 : 0;
-  const x = CANVAS_SIZE - size - margin;
-  const y = CANVAS_SIZE - size - CANVAS_SIZE * 0.055 + bounce;
+  const x = CANVAS_SIZE - size - margin + customMotion.offsetX;
+  const y = CANVAS_SIZE - size - CANVAS_SIZE * 0.055 + bounce + customMotion.offsetY;
 
   ctx.save();
   ctx.globalAlpha = 0.28;
@@ -432,11 +694,11 @@ function drawPenguin(
   ctx.shadowBlur = 38;
   ctx.shadowOffsetY = 18;
   ctx.translate(x + size / 2, y + size / 2);
-  ctx.rotate(wiggle);
+  ctx.rotate(wiggle + customMotion.rotation);
   ctx.drawImage(image, -size / 2, -size / 2, size, size);
   ctx.restore();
 
-  return { x, y, size };
+  return { x, y, size, centerX: x + size / 2, centerY: y + size / 2 };
 }
 
 function drawReactionBubble(
@@ -446,19 +708,24 @@ function drawReactionBubble(
   penguin: { x: number; y: number; size: number },
   time: number,
   poseChangedAt: number,
+  customPenguinImage?: HTMLImageElement | null,
+  customPenguinCollectionId?: PenguinCollectionId | null,
 ) {
   const elapsed = Math.max(0, time - poseChangedAt);
-  if (elapsed > 2800) {
+  if (!customPenguinImage && elapsed > 2800) {
     return;
   }
 
-  const alpha = elapsed > 2200 ? 1 - (elapsed - 2200) / 600 : 1;
-  const text = getReactionBubble(pose, effect);
+  const alpha = !customPenguinImage && elapsed > 2200 ? 1 - (elapsed - 2200) / 600 : 1;
+  const customKind = getCustomGestureKind(pose, effect);
+  const text = customPenguinImage
+    ? getCustomGestureCopy(customPenguinCollectionId, customKind).bubble
+    : getReactionBubble(pose, effect);
   const width = 245;
   const height = 86;
   const radius = 34;
-  const x = Math.min(CANVAS_SIZE - width - 26, penguin.x + penguin.size * 0.42);
-  const y = Math.max(28, penguin.y - height - 18 + Math.sin(time * 0.006) * 5);
+  const x = clamp(penguin.x + penguin.size * 0.42, 28, CANVAS_SIZE - width - 28);
+  const y = clamp(penguin.y - height - 18 + Math.sin(time * 0.006) * 5, 28, CANVAS_SIZE - height - 76);
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -471,9 +738,15 @@ function drawReactionBubble(
 
   ctx.shadowColor = "transparent";
   ctx.beginPath();
-  ctx.moveTo(x + width - 72, y + height - 4);
-  ctx.lineTo(x + width - 34, y + height + 36);
-  ctx.lineTo(x + width - 112, y + height - 18);
+  if (customPenguinImage) {
+    ctx.moveTo(x + 56, y + height - 4);
+    ctx.lineTo(Math.max(20, x + 14), Math.min(CANVAS_SIZE - 24, y + height + 34));
+    ctx.lineTo(x + 104, y + height - 16);
+  } else {
+    ctx.moveTo(x + width - 72, y + height - 4);
+    ctx.lineTo(x + width - 34, y + height + 36);
+    ctx.lineTo(x + width - 112, y + height - 18);
+  }
   ctx.closePath();
   ctx.fill();
 
@@ -502,8 +775,16 @@ function roundRect(
   ctx.closePath();
 }
 
-function drawCaption(ctx: CanvasRenderingContext2D, pose: Pose, effect: Effect) {
-  const caption = getCaption(pose, effect);
+function drawCaption(
+  ctx: CanvasRenderingContext2D,
+  pose: Pose,
+  effect: Effect,
+  customPenguinImage?: HTMLImageElement | null,
+  customPenguinCollectionId?: PenguinCollectionId | null,
+) {
+  const caption = customPenguinImage
+    ? getCustomGestureCopy(customPenguinCollectionId, getCustomGestureKind(pose, effect)).caption
+    : getCaption(pose, effect);
 
   ctx.save();
   ctx.textAlign = "center";
@@ -558,6 +839,8 @@ export function drawScene({
   gesture,
   poseChangedAt,
   snapStartedAt,
+  customPenguinImage,
+  customPenguinCollectionId,
   time,
 }: DrawSceneOptions) {
   const ctx = canvas.getContext("2d");
@@ -577,10 +860,31 @@ export function drawScene({
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   drawHandOverlay(ctx, assets, gesture, video, effect, time);
-  drawEffects(ctx, assets, effect, time);
-  drawCaption(ctx, pose, effect);
-  const penguin = drawPenguin(ctx, assets, pose, effect, time, poseChangedAt);
-  drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt);
+  if (!customPenguinImage) {
+    drawEffects(ctx, assets, effect, time);
+  }
+  drawCaption(ctx, pose, effect, customPenguinImage, customPenguinCollectionId);
+  const penguin = drawPenguin(
+    ctx,
+    assets,
+    pose,
+    effect,
+    time,
+    poseChangedAt,
+    customPenguinImage,
+    customPenguinCollectionId,
+  );
+  if (customPenguinImage) {
+    drawCustomGestureOverlays(
+      ctx,
+      assets,
+      customPenguinCollectionId,
+      getCustomGestureKind(pose, effect),
+      penguin,
+      time,
+    );
+  }
+  drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt, customPenguinImage, customPenguinCollectionId);
   drawWatermark(ctx);
   drawSnapFlash(ctx, time, snapStartedAt);
 }
@@ -594,6 +898,8 @@ export function drawStickerScene({
   effect,
   gesture,
   poseChangedAt,
+  customPenguinImage,
+  customPenguinCollectionId,
   time,
 }: DrawStickerSceneOptions) {
   const ctx = canvas.getContext("2d");
@@ -604,8 +910,29 @@ export function drawStickerScene({
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   drawSegmentedVideo(ctx, video, personMask, gesture);
   drawHandOverlay(ctx, assets, gesture, video, effect, time);
-  drawEffects(ctx, assets, effect, time);
-  drawCaption(ctx, pose, effect);
-  const penguin = drawPenguin(ctx, assets, pose, effect, time, poseChangedAt);
-  drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt);
+  if (!customPenguinImage) {
+    drawEffects(ctx, assets, effect, time);
+  }
+  drawCaption(ctx, pose, effect, customPenguinImage, customPenguinCollectionId);
+  const penguin = drawPenguin(
+    ctx,
+    assets,
+    pose,
+    effect,
+    time,
+    poseChangedAt,
+    customPenguinImage,
+    customPenguinCollectionId,
+  );
+  if (customPenguinImage) {
+    drawCustomGestureOverlays(
+      ctx,
+      assets,
+      customPenguinCollectionId,
+      getCustomGestureKind(pose, effect),
+      penguin,
+      time,
+    );
+  }
+  drawReactionBubble(ctx, pose, effect, penguin, time, poseChangedAt, customPenguinImage, customPenguinCollectionId);
 }

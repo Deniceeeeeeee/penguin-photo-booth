@@ -5,57 +5,73 @@ const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-r
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
 
+let sharedSegmenter: ImageSegmenter | null = null;
+let sharedSegmenterPromise: Promise<ImageSegmenter | null> | null = null;
+
+async function loadSharedSegmenter() {
+  if (sharedSegmenter) {
+    return sharedSegmenter;
+  }
+
+  if (sharedSegmenterPromise) {
+    return sharedSegmenterPromise;
+  }
+
+  sharedSegmenterPromise = (async () => {
+    const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+    sharedSegmenter = await ImageSegmenter.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: MODEL_URL,
+        delegate: "CPU",
+      },
+      runningMode: "IMAGE",
+      outputConfidenceMasks: true,
+      outputCategoryMask: false,
+    });
+
+    return sharedSegmenter;
+  })().catch(() => {
+    sharedSegmenterPromise = null;
+    return null;
+  });
+
+  return sharedSegmenterPromise;
+}
+
 export function useSelfieSegmenter() {
-  const segmenterRef = useRef<ImageSegmenter | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const isMountedRef = useRef(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadSegmenter() {
-      try {
-        setIsLoading(true);
-        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-        const segmenter = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: MODEL_URL,
-            delegate: "CPU",
-          },
-          runningMode: "IMAGE",
-          outputConfidenceMasks: true,
-          outputCategoryMask: false,
-        });
-
-        if (!isMounted) {
-          segmenter.close();
-          return;
-        }
-
-        segmenterRef.current = segmenter;
-        setError(null);
-      } catch {
-        if (isMounted) {
-          setError("Selfie cutout could not load. Poster stickers may be less accurate.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadSegmenter();
-
     return () => {
-      isMounted = false;
-      segmenterRef.current?.close();
-      segmenterRef.current = null;
+      isMountedRef.current = false;
     };
   }, []);
 
-  const createPersonMask = useCallback((source: HTMLCanvasElement) => {
-    const segmenter = segmenterRef.current;
+  const loadSegmenter = useCallback(async () => {
+    try {
+      if (!sharedSegmenter) {
+        setIsLoading(true);
+      }
+
+      const segmenter = await loadSharedSegmenter();
+      if (!segmenter) {
+        setError("Selfie cutout could not load. Poster stickers may be less accurate.");
+        return null;
+      }
+
+      setError(null);
+      return segmenter;
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  const createPersonMask = useCallback(async (source: HTMLCanvasElement) => {
+    const segmenter = await loadSegmenter();
     if (!segmenter) {
       return null;
     }
@@ -78,7 +94,7 @@ export function useSelfieSegmenter() {
     }
 
     return imageData;
-  }, []);
+  }, [loadSegmenter]);
 
   return { createPersonMask, isLoading, error };
 }
