@@ -43,6 +43,8 @@ const localPenguinOverrides: Partial<Record<PenguinCollectionId, Record<string, 
     "7365": "/custom-penguins/pudgy-penguins-7365.png",
     "5678": "/custom-penguins/pudgy-penguins-5678.png",
     "3950": "/custom-penguins/pudgy-penguins-3950.png",
+    "659": "/custom-penguins/pudgy-penguins-659.png",
+    "4434": "/custom-penguins/pudgy-penguins-4434.png",
   },
 };
 
